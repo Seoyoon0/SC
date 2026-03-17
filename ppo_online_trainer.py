@@ -590,17 +590,22 @@ def compute_ppo_loss(
         vf_loss = F.mse_loss(values[rl_mask], returns[rl_mask])
 
     # --- Entropy bonus ---
+    # float 변환 전에 response 위치 먼저 선별 → (B,T-1,V) float32 텐서 생성 방지
     if entropy_coef > 0:
-        shift_logits = logits[:, :-1, :].float()
-        entropy = -(F.softmax(shift_logits, dim=-1) * F.log_softmax(shift_logits, dim=-1)).sum(dim=-1)
-        entropy_mean = (entropy * response_mask).sum() / response_mask.sum().clamp(min=1)
+        resp_pos = response_mask.bool()
+        if resp_pos.any():
+            resp_logits = logits[:, :-1, :][resp_pos].float()  # (N_resp, V)
+            entropy_mean = -(F.softmax(resp_logits, dim=-1) * F.log_softmax(resp_logits, dim=-1)).sum(dim=-1).mean()
+            del resp_logits
+        else:
+            entropy_mean = torch.tensor(0.0, device=logits.device)
     else:
         entropy_mean = torch.tensor(0.0, device=logits.device)
 
     # --- SFT Loss for teacher steps ---
     sft_loss = torch.tensor(0.0, device=input_ids.device)
     if is_teacher_mask.any():
-        shift_logits_sft = logits[:, :-1, :].float()[is_teacher_mask]
+        shift_logits_sft = logits[:, :-1, :][is_teacher_mask].float()  # 슬라이싱 후 float 변환
         shift_labels_sft = input_ids[:, 1:][is_teacher_mask]
         attn_sft = attention_mask[:, 1:][is_teacher_mask]
         plen_sft = prompt_lengths[is_teacher_mask]
