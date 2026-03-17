@@ -17,7 +17,7 @@ PYTHON=/home/seoyoon/miniconda3/envs/NRL/bin/python3
 # ---- 모델 / 데이터 ----
 MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 DATASET="datasets/DeepMath-103K_converted.parquet"
-OUTPUT_DIR="models/ppo_online"
+OUTPUT_DIR="models/ppo_online_v2"
 CLASSIFIER_HEAD="checkpoints/action_cls/best_model/classifier_head.pt"
 
 # ---- Rollout 설정 ----
@@ -41,6 +41,10 @@ SAVE_EVERY=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cd "$(dirname "$0")/.."
+
+# 기존 rollout 데이터를 새 output_dir로 복사
+mkdir -p "$OUTPUT_DIR/rollouts"
+cp models/ppo_online/rollouts/online_ppo_DeepMath-103K_converted_worker*.jsonl "$OUTPUT_DIR/rollouts/" 2>/dev/null || true
 
 echo "===== Online PPO 학습 시작 (cls_head jointly 학습) ====="
 CUDA_VISIBLE_DEVICES=2,3,6,7 $PYTHON scripts/ppo_online_trainer.py \
@@ -68,6 +72,7 @@ CUDA_VISIBLE_DEVICES=2,3,6,7 $PYTHON scripts/ppo_online_trainer.py \
     --lam 0.95 \
     --save_every $SAVE_EVERY \
     --classifier_head_path "$CLASSIFIER_HEAD" \
+    --use_cached_rollout \
     --use_wandb \
     --wandb_project "ppo_sc_math" \
     --log_file "$OUTPUT_DIR/train.log"
